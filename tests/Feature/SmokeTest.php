@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Asignua\FilamentVatId\Tests\Feature;
 
-use Asignua\FilamentVatId\VatIdPlugin;
 use Asignua\FilamentVatId\Tests\TestCase;
+use Asignua\FilamentVatId\VatIdPlugin;
 use Filament\Facades\Filament;
 
 class SmokeTest extends TestCase
@@ -25,6 +25,6 @@ class SmokeTest extends TestCase
 
     public function test_the_translations_are_loaded(): void
     {
-        $this->assertSame('Sample', __('filament-vat-id::filament-vat-id.sample'));
+        $this->assertSame('Look up', __('filament-vat-id::filament-vat-id.lookup.action'));
     }
 }
