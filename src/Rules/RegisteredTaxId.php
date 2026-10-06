@@ -12,9 +12,11 @@ use Closure;
 use Illuminate\Contracts\Validation\ValidationRule;
 
 /**
- * The identifier must be known to a registry (VIES for EU VAT numbers, ARES, the Polish white list, …). Calls the
- * network, so add it after the offline {@see TaxId} rule. A value that fails the offline check, a blank value and
- * a country without a registry all pass here.
+ * The identifier must be known to an authoritative registry: VIES for EU VAT numbers (a domestic register does not
+ * prove a VAT-UE registration), ARES for Czech IČO / DIČ, GUS for Polish NIP / REGON (needs a key). Calls the
+ * network, so add it after the offline {@see TaxId} rule. A blank value, a value that fails the offline check, a
+ * type without such a registry (Ukraine, Polish numbers without a GUS key, a Czech birth-number DIČ) and a non-EU
+ * country for an EU VAT field all pass here. A company the registry marks inactive (closed, ended) is rejected.
  *
  * When no registry can answer, the `on_unavailable` config decides: `allow` accepts, `warn` accepts and calls the
  * `$onWarning` callback, `fail` rejects.
@@ -52,6 +54,7 @@ class RegisteredTaxId implements ValidationRule
 
         match ($verification->status) {
             VerificationStatus::NotFound => $fail('filament-vat-id::filament-vat-id.validation.not_registered')->translate(['type' => $this->type->label()]),
+            VerificationStatus::Inactive => $fail('filament-vat-id::filament-vat-id.validation.inactive')->translate(['type' => $this->type->label()]),
             VerificationStatus::Unavailable => $this->unavailable($manager->onUnavailable(), (string) $value, $fail),
             default => null,
         };

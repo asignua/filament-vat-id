@@ -236,6 +236,34 @@ class ChecksumTest extends TestCase
         $this->assertSame('rubbish', TaxIdValidator::format(' rubbish ', TaxIdType::EuVat));
     }
 
+    public function test_a_non_eu_country_is_not_validated_as_eu_vat(): void
+    {
+        $this->assertTrue(TaxIdValidator::isValid('anything', TaxIdType::EuVat, 'UA'));
+        $this->assertFalse(TaxIdValidator::isValid('anything', TaxIdType::EuVat, 'DE'));
+    }
+
+    public function test_a_french_letter_key_is_not_read_as_a_country_prefix(): void
+    {
+        // "AT" is also Austria's prefix: with the country known the whole value is the French number.
+        $this->assertSame(['FR', 'AT123456789'], TaxIdValidator::splitEuVat('AT123456789', 'FR'));
+        $this->assertTrue(TaxIdValidator::isValid('AT123456789', TaxIdType::EuVat, 'FR'));
+        $this->assertTrue(TaxIdValidator::isValid('FRAT123456789', TaxIdType::EuVat, 'FR'));
+        $this->assertSame(['AT', '123456789'], TaxIdValidator::splitEuVat('AT123456789'), 'no country: the prefix wins');
+    }
+
+    public function test_irish_numbers_may_end_in_w(): void
+    {
+        $this->assertTrue(TaxIdValidator::isValid('IE6433435FW', TaxIdType::EuVat));
+        $this->assertTrue(TaxIdValidator::isValid('IE6433435FA', TaxIdType::EuVat) === false);
+    }
+
+    public function test_edrpou_is_padded_to_eight_digits(): void
+    {
+        $this->assertTrue(TaxIdValidator::isValid('32129', TaxIdType::UaEdrpou), 'Oschadbank without the leading zeros');
+        $this->assertSame('00032129', TaxIdValidator::normalize('32129', TaxIdType::UaEdrpou));
+        $this->assertFalse(TaxIdValidator::isValid('3212', TaxIdType::UaEdrpou));
+    }
+
     private static function mutate(string $value, int $index): string
     {
         $char = $value[$index];

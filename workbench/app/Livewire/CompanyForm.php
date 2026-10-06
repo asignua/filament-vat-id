@@ -8,6 +8,7 @@ use Asignua\FilamentVatId\Enums\TaxIdType;
 use Asignua\FilamentVatId\Forms\Components\TaxIdInput;
 use Filament\Actions\Concerns\InteractsWithActions;
 use Filament\Actions\Contracts\HasActions;
+use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Schemas\Concerns\InteractsWithSchemas;
@@ -27,6 +28,8 @@ class CompanyForm extends Component implements HasActions, HasSchemas
 
     public string $type = 'eu_vat';
 
+    public bool $withRepeater = false;
+
     /** @var array<string, mixed> */
     public array $saved = [];
 
@@ -39,7 +42,7 @@ class CompanyForm extends Component implements HasActions, HasSchemas
     {
         return $schema
             ->components([
-                Select::make('country')->options(['PL' => 'Poland', 'CZ' => 'Czechia', 'DE' => 'Germany', 'GR' => 'Greece']),
+                Select::make('country')->options(['PL' => 'Poland', 'CZ' => 'Czechia', 'DE' => 'Germany', 'GR' => 'Greece', 'UA' => 'Ukraine']),
                 TaxIdInput::make('tax_id')
                     ->type(TaxIdType::from($this->type))
                     ->countryField('country')
@@ -50,6 +53,10 @@ class CompanyForm extends Component implements HasActions, HasSchemas
                 TextInput::make('address'),
                 TextInput::make('iban'),
                 TextInput::make('regon'),
+                Repeater::make('rows')
+                    ->required()
+                    ->visible($this->withRepeater)
+                    ->schema([TextInput::make('v')->required()]),
             ])
             ->statePath('data');
     }

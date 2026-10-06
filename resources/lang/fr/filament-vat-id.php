@@ -16,6 +16,7 @@ return [
         'invalid' => 'Le champ :attribute n’est pas valide (:type).',
         'not_registered' => 'Le champ :attribute n’est pas enregistré (:type).',
         'unavailable' => 'Le champ :attribute n’a pas pu être vérifié car le registre est indisponible. Réessayez plus tard.',
+        'inactive' => 'Le champ :attribute correspond à une entreprise qui n’est plus active (:type).',
     ],
     'lookup' => [
         'action' => 'Rechercher',

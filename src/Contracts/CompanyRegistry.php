@@ -6,6 +6,7 @@ namespace Asignua\FilamentVatId\Contracts;
 
 use Asignua\FilamentVatId\Data\CompanyData;
 use Asignua\FilamentVatId\Enums\TaxIdType;
+use Asignua\FilamentVatId\Exceptions\NumberNotSupported;
 use Asignua\FilamentVatId\Exceptions\RegistryUnavailable;
 
 /**
@@ -21,11 +22,21 @@ interface CompanyRegistry
     public function supports(string $country, TaxIdType $type): bool;
 
     /**
+     * Whether a "not found" from this registry may be taken as "this identifier does not exist" for the type, so it
+     * can answer remote verification (`->vies()`, `RegisteredTaxId`). Return `true` only for a registry that is
+     * authoritative for the type: VIES for EU VAT numbers, ARES for Czech IČO, GUS for Polish NIP / REGON. Registries
+     * that prove something narrower (a domestic VAT payers list does not prove a VAT-UE registration) return `false`
+     * and are used for lookups only.
+     */
+    public function canVerify(string $country, TaxIdType $type): bool;
+
+    /**
      * Looks the company up. `$number` is the normalised identifier (digits, EU VAT numbers without the prefix).
      *
      * @throws RegistryUnavailable when the registry could not answer
+     * @throws NumberNotSupported  when the registry cannot look up this kind of number
      *
      * @return CompanyData|null `null` when the registry answered that there is no such company
      */
-    public function lookup(string $country, string $number): ?CompanyData;
+    public function lookup(string $country, TaxIdType $type, string $number): ?CompanyData;
 }

@@ -9,9 +9,11 @@ use Asignua\FilamentVatId\Registries\Vies;
 
 return [
     /*
-    | Registries used for lookups and remote verification, in order of preference. For a given country and
-    | identifier type the manager asks every registry that supports it, in this order, and takes the first
-    | answer that has data. Add your own class (it must implement CompanyRegistry; it is resolved from the
+    | Registries used for lookups and remote verification, in order of preference. For a lookup the manager asks
+    | every registry that supports the country and type, in this order, and takes the first answer that has data.
+    | Verification (`TaxIdInput::vies()`, `RegisteredTaxId`) uses only registries that are authoritative for the
+    | type (CompanyRegistry::canVerify()): VIES for EU VAT numbers, ARES for Czech IČO / DIČ, GUS for Polish
+    | NIP / REGON. The Polish white list is for lookups only. Add your own class (it must implement CompanyRegistry; it is resolved from the
     | container) to plug in a paid provider, for example for Ukraine.
     */
     'registries' => [
@@ -22,9 +24,15 @@ return [
     ],
 
     'timeouts' => [
-        'connect' => 5,
-        'request' => 10,
+        'connect' => 3,
+        'request' => 6,
     ],
+
+    /*
+    | Upper bound, in seconds, for one lookup or verification across all registries (a registry that is already
+    | running still finishes within its own timeouts). Verification also stops at the first unavailable registry.
+    */
+    'total_timeout' => 12,
 
     /*
     | Lookup results are cached by registry + country + number. "Not found" is cached too; an unavailable

@@ -6,6 +6,7 @@ namespace Asignua\FilamentVatId\Registries;
 
 use Asignua\FilamentVatId\Data\CompanyData;
 use Asignua\FilamentVatId\Enums\TaxIdType;
+use Asignua\FilamentVatId\Exceptions\NumberNotSupported;
 use Asignua\FilamentVatId\Exceptions\RegistryUnavailable;
 use Asignua\FilamentVatId\Support\TaxIdValidator;
 
@@ -26,12 +27,17 @@ class Ares extends AbstractRegistry
         return $country === 'CZ' && in_array($type, [TaxIdType::CzIco, TaxIdType::CzDic, TaxIdType::EuVat], true);
     }
 
-    public function lookup(string $country, string $number): ?CompanyData
+    public function canVerify(string $country, TaxIdType $type): bool
+    {
+        return $country === 'CZ' && in_array($type, [TaxIdType::CzIco, TaxIdType::CzDic], true);
+    }
+
+    public function lookup(string $country, TaxIdType $type, string $number): ?CompanyData
     {
         $ico = TaxIdValidator::normalize($number, TaxIdType::CzIco);
 
         if (preg_match('/^\d{8}$/', $ico) !== 1) {
-            return null;
+            throw new NumberNotSupported($this->name(), 'ARES looks up IČO (8 digits); a birth-number DIČ cannot be resolved.');
         }
 
         $url = rtrim($this->configString('ares.url'), '/').'/'.$ico;

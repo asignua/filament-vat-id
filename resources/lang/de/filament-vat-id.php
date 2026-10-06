@@ -16,6 +16,7 @@ return [
         'invalid' => 'Das Feld :attribute ist keine gültige Angabe (:type).',
         'not_registered' => 'Das Feld :attribute ist nicht registriert (:type).',
         'unavailable' => 'Das Feld :attribute konnte nicht geprüft werden, da das Register nicht erreichbar ist. Bitte später erneut versuchen.',
+        'inactive' => 'Das Feld :attribute gehört zu einem Unternehmen, das nicht mehr aktiv ist (:type).',
     ],
     'lookup' => [
         'action' => 'Abfragen',

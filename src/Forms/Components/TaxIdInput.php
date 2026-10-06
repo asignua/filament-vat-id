@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Asignua\FilamentVatId\Forms\Components;
 
 use Asignua\FilamentVatId\Enums\TaxIdType;
+use Asignua\FilamentVatId\Exceptions\NumberNotSupported;
 use Asignua\FilamentVatId\Exceptions\RegistryUnavailable;
 use Asignua\FilamentVatId\Rules\RegisteredTaxId;
 use Asignua\FilamentVatId\Rules\TaxId;
@@ -69,8 +70,10 @@ class TaxIdInput extends TextInput
             fn (): Action => $this->makeLookupAction(),
         );
 
+        // The company found by the last lookup is remembered in the session (not in the form state, which would leak
+        // into the saved data), tied to the number it was found for.
         $this->hint(function (Get $get): ?string {
-            $found = $get($this->companyStateKey());
+            $found = session($this->hintSessionKey());
 
             if (!is_array($found) || ($found['number'] ?? null) !== $this->currentNumber($get)) {
                 return null;
@@ -235,9 +238,9 @@ class TaxIdInput extends TextInput
         return is_array($map) ? $map : [];
     }
 
-    protected function companyStateKey(): string
+    protected function hintSessionKey(): string
     {
-        return '__vat_id_'.$this->getName();
+        return 'filament-vat-id.hint.'.$this->getStatePath();
     }
 
     protected function currentNumber(Get $get): ?string
@@ -293,7 +296,8 @@ class TaxIdInput extends TextInput
 
         $manager = app(RegistryManager::class);
 
-        if (!$manager->supports($manager->resolve($country ?? '', $type, $raw)[0] ?? '', $type, $this->registryClass)) {
+        if (!TaxIdValidator::isEuCountry($country) && $type === TaxIdType::EuVat
+            || !$manager->supports($manager->resolve($country ?? '', $type, $raw)[0] ?? '', $type, $this->registryClass)) {
             $this->notifyLookup('warning', 'lookup.no_registry');
 
             return;
@@ -303,6 +307,10 @@ class TaxIdInput extends TextInput
             $company = $manager->lookup($country ?? '', $type, $raw, $this->registryClass);
         } catch (RegistryUnavailable) {
             $this->notifyLookup('danger', 'lookup.unavailable');
+
+            return;
+        } catch (NumberNotSupported) {
+            $this->notifyLookup('warning', 'lookup.no_registry');
 
             return;
         }
@@ -321,7 +329,7 @@ class TaxIdInput extends TextInput
             }
         }
 
-        $set($this->companyStateKey(), [
+        session()->put($this->hintSessionKey(), [
             'number' => TaxIdValidator::normalize($raw, $type),
             'name' => $company->name,
         ]);
@@ -329,7 +337,7 @@ class TaxIdInput extends TextInput
         Notification::make()
             ->success()
             ->title(__('filament-vat-id::filament-vat-id.lookup.found'))
-            ->body($company->name)
+            ->body(e($company->name))
             ->send();
     }
 

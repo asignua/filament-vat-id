@@ -34,7 +34,12 @@ class Vies extends AbstractRegistry
         return $type === TaxIdType::EuVat && EuVatNumber::prefix($country) !== null;
     }
 
-    public function lookup(string $country, string $number): ?CompanyData
+    public function canVerify(string $country, TaxIdType $type): bool
+    {
+        return $this->supports($country, $type);
+    }
+
+    public function lookup(string $country, TaxIdType $type, string $number): ?CompanyData
     {
         $prefix = EuVatNumber::prefix($country);
 
@@ -43,10 +48,6 @@ class Vies extends AbstractRegistry
         }
 
         $number = strtoupper((string) preg_replace('/[^A-Za-z0-9+*]/', '', $number));
-
-        if (str_starts_with($number, $prefix)) {
-            $number = substr($number, 2);
-        }
 
         $response = $this->send(fn () => $this->http()->acceptJson()->asJson()->post($this->configString('vies.url'), [
             'countryCode' => $prefix,

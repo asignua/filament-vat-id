@@ -16,6 +16,7 @@ return [
         'invalid' => 'Поле :attribute не є дійсним значенням (:type).',
         'not_registered' => 'Значення поля :attribute не знайдено в реєстрі (:type).',
         'unavailable' => 'Не вдалося перевірити поле :attribute: реєстр недоступний. Спробуйте пізніше.',
+        'inactive' => 'Поле :attribute належить компанії, яка більше не діє (:type).',
     ],
     'lookup' => [
         'action' => 'Знайти',
@@ -28,7 +29,7 @@ return [
     ],
     'notifications' => [
         'unavailable_title' => 'Реєстр недоступний',
-        'unavailable_saved' => 'Номер не вдалося перевірити онлайн, його збережено як введено.',
+        'unavailable_saved' => 'Номер не вдалося перевірити онлайн, його прийнято як введено.',
     ],
     'entry' => [
         'copied' => 'Скопійовано',

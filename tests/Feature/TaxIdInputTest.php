@@ -219,6 +219,52 @@ class TaxIdInputTest extends TestCase
         $component->assertDontSee('ORANGE POLSKA');
     }
 
+    public function test_the_lookup_hint_does_not_leak_into_the_saved_data(): void
+    {
+        config()->set('filament-vat-id.registries', [BialaLista::class]);
+        Http::fake(['wl-api.mf.gov.pl/*' => Fixture::jsonResponse('biala-lista/found.json')]);
+
+        $component = Livewire::test(CompanyForm::class, ['withRepeater' => true])
+            ->fillForm(['country' => 'PL', 'tax_id' => 'PL5260250995', 'rows' => [['v' => 'x']]])
+            ->callAction($this->lookupAction());
+
+        $component->assertSee('ORANGE POLSKA SPÓŁKA AKCYJNA');
+        $this->assertSame([], array_filter(array_keys($component->get('data')), fn (string $k): bool => str_starts_with($k, '__')));
+
+        $component->call('save')->assertHasNoFormErrors();
+
+        $this->assertSame([], array_filter(array_keys($component->get('saved')), fn (string $k): bool => str_starts_with($k, '__')));
+        $this->assertCount(1, $component->get('saved.rows'));
+    }
+
+    public function test_lookup_escapes_the_company_name_in_the_notification(): void
+    {
+        config()->set('filament-vat-id.registries', [BialaLista::class]);
+        $json = Fixture::json('biala-lista/found.json');
+        $json['result']['subject']['name'] = '<b>Evil</b> Sp. z o.o.';
+        Http::fake(['wl-api.mf.gov.pl/*' => Http::response($json)]);
+
+        Livewire::test(CompanyForm::class)
+            ->fillForm(['country' => 'PL', 'tax_id' => '5260250995'])
+            ->callAction($this->lookupAction());
+
+        Notification::assertNotified(
+            Notification::make()->success()->title(__('filament-vat-id::filament-vat-id.lookup.found'))->body(e('<b>Evil</b> Sp. z o.o.')),
+        );
+    }
+
+    public function test_a_non_eu_country_skips_eu_vat_validation(): void
+    {
+        Http::fake();
+
+        Livewire::test(CompanyForm::class, ['remote' => true])
+            ->fillForm(['country' => 'UA', 'tax_id' => 'whatever 123'])
+            ->call('save')
+            ->assertHasNoFormErrors();
+
+        Http::assertNothingSent();
+    }
+
     public function test_lookup_does_not_overwrite_with_empty_values(): void
     {
         config()->set('filament-vat-id.registries', [BialaLista::class]);

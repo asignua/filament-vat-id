@@ -16,6 +16,7 @@ return [
         'invalid' => 'Het veld :attribute is niet geldig (:type).',
         'not_registered' => 'Het veld :attribute is niet geregistreerd (:type).',
         'unavailable' => 'Het veld :attribute kon niet worden gecontroleerd omdat het register niet beschikbaar is. Probeer het later opnieuw.',
+        'inactive' => 'Het veld :attribute hoort bij een bedrijf dat niet meer actief is (:type).',
     ],
     'lookup' => [
         'action' => 'Opzoeken',

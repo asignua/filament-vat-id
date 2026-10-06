@@ -74,8 +74,21 @@ configured order, the first with data wins), fills the mapped fields, shows the 
 notification. "Not found", "registry unavailable" and "no registry for this country" are notifications, not exceptions.
 Mapped values that are empty are skipped, so a lookup never wipes what the user typed.
 
-`->vies()` adds a remote check on save, after the offline rule. What happens when no registry answers is decided by
-`on_unavailable` (see Configuration). `->registry(Vies::class)` pins the check and the lookup to one registry.
+`->vies()` adds a remote check on save, after the offline rule. It is answered only by registries that are authoritative for
+the type, never by a domestic list:
+
+| Type | Remote check answered by | Otherwise |
+| --- | --- | --- |
+| `EuVat` | VIES only (a domestic register such as the white list does not prove a VAT-UE registration) | - |
+| `CzIco`, `CzDic` | ARES | a birth-number DIČ of an individual cannot be resolved: the check is skipped, not failed |
+| `PlNip`, `PlRegon` | GUS (existence in REGON; needs a key) | without a key the check is skipped. A white-list miss is never treated as "does not exist": it only means "not an active VAT payer" |
+| `UaEdrpou`, `UaRnokpp` | none | skipped |
+
+A company the registry marks inactive (closed in GUS, ended in ARES) is rejected too. The lookup button, in contrast, asks
+every registry that supports the type, in the configured order, so the white list still fills bank accounts.
+What happens when no registry answers is decided by `on_unavailable` (see Configuration; it applies to `->vies()` and to
+`RegisteredTaxId` alike). `->registry(Vies::class)` pins the check and the lookup to one registry. A non-EU country on an
+EU VAT field (`UA`, `US`…) means there is nothing to validate: the value passes offline and remotely.
 
 ### Rules
 
@@ -164,9 +177,15 @@ class MyUkrainianRegistry implements CompanyRegistry
         return $country === 'UA' && $type === TaxIdType::UaEdrpou;
     }
 
-    public function lookup(string $country, string $number): ?CompanyData   // null = not found
+    public function canVerify(string $country, TaxIdType $type): bool
     {
-        // ... throw Asignua\FilamentVatId\Exceptions\RegistryUnavailable when the provider cannot answer
+        return false; // true only if "not found" really means "does not exist" (then ->vies() uses it too)
+    }
+
+    public function lookup(string $country, TaxIdType $type, string $number): ?CompanyData   // null = not found
+    {
+        // throw Asignua\FilamentVatId\Exceptions\RegistryUnavailable when the provider cannot answer,
+        // Asignua\FilamentVatId\Exceptions\NumberNotSupported when it cannot handle this kind of number
     }
 }
 ```
@@ -186,9 +205,10 @@ php artisan vendor:publish --tag=filament-vat-id-config
 | Key | Default | |
 | --- | --- | --- |
 | `registries` | white list, GUS, ARES, VIES | Registry classes in order of preference; resolved from the container |
-| `timeouts.connect` / `timeouts.request` | 5 / 10 s | |
-| `cache.enabled` / `ttl` / `store` / `prefix` | on / 3600 s / default store | "Found" and "not found" are cached; "unavailable" never |
-| `on_unavailable` | `warn` | `allow` accepts silently; `warn` accepts and shows a notification; `fail` rejects |
+| `timeouts.connect` / `timeouts.request` | 3 / 6 s | Per registry call |
+| `total_timeout` | 12 s | Upper bound for one lookup or verification across all registries; verification also stops at the first unavailable registry |
+| `cache.enabled` / `ttl` / `store` / `prefix` | on / 3600 s / default store | "Found" and "not found" are cached per registry, country, type and number; "unavailable" never. The GUS session id is cached separately and always (about 50 minutes), whatever `cache.enabled` says |
+| `on_unavailable` | `warn` | When remote verification (`->vies()`, `RegisteredTaxId`) gets no answer: `allow` accepts silently; `warn` accepts and shows a notification (only inside a Filament form); `fail` rejects |
 | `gus.key` | `FILAMENT_VAT_ID_GUS_KEY` | GUS is disabled while empty |
 | `gus.environment` | `FILAMENT_VAT_ID_GUS_ENV` = `prod` | `test` uses the public test endpoint and key `abcde12345abcde12345` (scrambled data) |
 
@@ -208,8 +228,12 @@ php artisan vendor:publish --tag=filament-vat-id-config
 - **One registry saying "not found" does not hide another one being down**: with `[BialaLista, Vies]`, "not found" +
   "unavailable" is reported as unavailable, because the second might have known the company.
 - **Ukraine has no free registry** (see above); the lookup button reports "no registry for this country".
-- **The hint under the field** (company name after a lookup) lives in the form state under `__vat_id_<field>` next to the
-  form data; it is not saved and disappears when the number changes.
+- **The hint under the field** (company name after a lookup) is kept in the session, keyed by the field's state path and
+  tied to the number it was found for; it never touches the form data and disappears when the number changes.
+- **Registries outside a panel.** `VatIdPlugin::registry()` only runs when a panel boots (and is deduplicated by class).
+  Registries needed in jobs, commands or APIs belong in the `registries` config.
+- **HTTP-client logging.** The GUS key travels in the login SOAP body. Telescope, Debugbar or any HTTP-client logger that
+  records request bodies will record it: exclude these requests (host `wyszukiwarkaregon.stat.gov.pl`) or the key.
 - **Rules run on submit.** The remote check runs after the offline one and is skipped for a malformed number, so a typo
   never costs a network call.
 

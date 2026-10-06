@@ -6,6 +6,7 @@ namespace Asignua\FilamentVatId\Registries;
 
 use Asignua\FilamentVatId\Data\CompanyData;
 use Asignua\FilamentVatId\Enums\TaxIdType;
+use Asignua\FilamentVatId\Exceptions\NumberNotSupported;
 use Asignua\FilamentVatId\Exceptions\RegistryUnavailable;
 use DOMDocument;
 use Illuminate\Support\Facades\Cache;
@@ -42,7 +43,12 @@ class GusBir extends AbstractRegistry
             && in_array($type, [TaxIdType::EuVat, TaxIdType::PlNip, TaxIdType::PlRegon], true);
     }
 
-    public function lookup(string $country, string $number): ?CompanyData
+    public function canVerify(string $country, TaxIdType $type): bool
+    {
+        return $this->isEnabled() && $country === 'PL' && in_array($type, [TaxIdType::PlNip, TaxIdType::PlRegon], true);
+    }
+
+    public function lookup(string $country, TaxIdType $type, string $number): ?CompanyData
     {
         if (!$this->isEnabled()) {
             throw new RegistryUnavailable($this->name(), 'No API key configured.');
@@ -57,7 +63,7 @@ class GusBir extends AbstractRegistry
         };
 
         if ($param === null) {
-            return null;
+            throw new NumberNotSupported($this->name(), 'Expected a NIP (10 digits) or a REGON (9 or 14).');
         }
 
         $records = $this->search($param, $number);
@@ -106,12 +112,13 @@ class GusBir extends AbstractRegistry
         }
 
         if (isset($record['ErrorCode'])) {
-            // 4 = nothing found; anything else (5 = not logged in, 7 = key problems…) is not a verdict on the number.
+            // BIR 1.1: 4 = no entity for the criteria; 7 = no session (the sid expired): log in again once;
+            // 5 = no access rights to the report and everything else is not a verdict on the number.
             if ($record['ErrorCode'] === '4') {
                 return null;
             }
 
-            if ($record['ErrorCode'] === '5' && $retry) {
+            if ($record['ErrorCode'] === '7' && $retry) {
                 $this->forgetSession();
 
                 return $this->search($param, $number, false);

@@ -6,6 +6,7 @@ namespace Asignua\FilamentVatId\Registries;
 
 use Asignua\FilamentVatId\Data\CompanyData;
 use Asignua\FilamentVatId\Enums\TaxIdType;
+use Asignua\FilamentVatId\Exceptions\NumberNotSupported;
 use Asignua\FilamentVatId\Exceptions\RegistryUnavailable;
 
 /**
@@ -25,7 +26,22 @@ class BialaLista extends AbstractRegistry
         return $country === 'PL' && in_array($type, [TaxIdType::EuVat, TaxIdType::PlNip, TaxIdType::PlRegon], true);
     }
 
-    public function lookup(string $country, string $number): ?CompanyData
+    /**
+     * The white list proves a domestic VAT registration (and only for VAT payers), never VAT-UE or the existence of
+     * a business: it is used for lookups only.
+     */
+    public function canVerify(string $country, TaxIdType $type): bool
+    {
+        return false;
+    }
+
+    /**
+     * White-list error codes that say "this NIP / REGON is malformed" (length: WL-113 NIP, WL-105 REGON; checksum
+     * codes WL-114 to WL-116 / WL-106). Every other 400 (a bad date, a changed API) is not a verdict on the number.
+     */
+    private const array INVALID_NUMBER_CODES = ['WL-105', 'WL-106', 'WL-113', 'WL-114', 'WL-115', 'WL-116'];
+
+    public function lookup(string $country, TaxIdType $type, string $number): ?CompanyData
     {
         $number = (string) preg_replace('/\D/', '', (string) preg_replace('/^PL/i', '', $number));
 
@@ -36,15 +52,14 @@ class BialaLista extends AbstractRegistry
         };
 
         if ($kind === null) {
-            return null;
+            throw new NumberNotSupported($this->name(), 'Expected a NIP (10 digits) or a REGON (9 or 14).');
         }
 
         $url = rtrim($this->configString('biala_lista.url'), '/')."/{$kind}/{$number}";
 
         $response = $this->send(fn () => $this->http()->acceptJson()->get($url, ['date' => now('Europe/Warsaw')->format('Y-m-d')]));
 
-        // 400 = the API rejected the number itself: treat as "no such company".
-        if ($response->status() === 400 || $response->status() === 404) {
+        if ($response->status() === 400 && in_array($response->json('code'), self::INVALID_NUMBER_CODES, true)) {
             return null;
         }
 

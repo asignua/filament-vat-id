@@ -16,6 +16,7 @@ return [
         'invalid' => ':attribute alanı geçerli değil (:type).',
         'not_registered' => ':attribute alanı kayıtlı değil (:type).',
         'unavailable' => ':attribute alanı, sicil erişilemediği için doğrulanamadı. Daha sonra tekrar deneyin.',
+        'inactive' => ':attribute alanı artık faal olmayan bir şirkete ait (:type).',
     ],
     'lookup' => [
         'action' => 'Sorgula',

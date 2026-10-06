@@ -190,7 +190,12 @@ class RegistryManagerTest extends TestCase
                 return $country === 'UA' && $type === TaxIdType::UaEdrpou;
             }
 
-            public function lookup(string $country, string $number): ?CompanyData
+            public function canVerify(string $country, TaxIdType $type): bool
+            {
+                return true;
+            }
+
+            public function lookup(string $country, TaxIdType $type, string $number): ?CompanyData
             {
                 return $number === '14360570' ? new CompanyData(name: 'PrivatBank', source: 'custom') : null;
             }
@@ -207,6 +212,135 @@ class RegistryManagerTest extends TestCase
         config()->set('filament-vat-id.registries', [StubUkrainianRegistry::class]);
 
         $this->assertSame('Stub', app(RegistryManager::class)->lookup('UA', TaxIdType::UaEdrpou, '14360570')?->name);
+    }
+
+    public function test_eu_vat_is_verified_by_vies_only(): void
+    {
+        config()->set('filament-vat-id.registries', [BialaLista::class, Vies::class]);
+        Http::fake([
+            'wl-api.mf.gov.pl/*' => Fixture::jsonResponse('biala-lista/found.json'),
+            'ec.europa.eu/*' => Fixture::jsonResponse('vies/invalid.json'),
+        ]);
+
+        $manager = app(RegistryManager::class);
+
+        $this->assertSame(VerificationStatus::NotFound, $manager->verify('', TaxIdType::EuVat, 'PL5260250995')->status, 'the white list does not prove VAT-UE');
+        Http::assertSentCount(1);
+
+        // a lookup (to fill a form) still prefers the white list
+        $this->assertSame('biala_lista', $manager->lookup('', TaxIdType::EuVat, 'PL5260250995')?->source);
+    }
+
+    public function test_an_inactive_company_is_not_verified(): void
+    {
+        $json = Fixture::json('ares/found.json');
+        $json['datumZaniku'] = '2020-01-31';
+        Http::fake(['ares.gov.cz/*' => Http::response($json)]);
+
+        $verification = app(RegistryManager::class)->verify('', TaxIdType::CzIco, '45274649');
+
+        $this->assertSame(VerificationStatus::Inactive, $verification->status);
+        $this->assertFalse($verification->company?->active);
+    }
+
+    public function test_a_czech_birth_number_dic_is_skipped_not_not_found(): void
+    {
+        Http::fake();
+
+        $manager = app(RegistryManager::class);
+
+        $this->assertSame(VerificationStatus::Skipped, $manager->verify('', TaxIdType::CzDic, 'CZ7103192745')->status);
+        $this->assertSame(VerificationStatus::Verified, $this->fakedAres($manager)->status);
+    }
+
+    private function fakedAres(RegistryManager $manager): \Asignua\FilamentVatId\Data\Verification
+    {
+        $this->app->forgetInstance(\Illuminate\Http\Client\Factory::class);
+        Http::clearResolvedInstance(\Illuminate\Http\Client\Factory::class);
+        Http::fake(['ares.gov.cz/*' => Fixture::jsonResponse('ares/found.json')]);
+
+        return $manager->verify('', TaxIdType::CzDic, 'CZ45274649');
+    }
+
+    public function test_polish_numbers_are_verified_by_gus_only(): void
+    {
+        $manager = app(RegistryManager::class);
+        Http::fake(['wl-api.mf.gov.pl/*' => Fixture::jsonResponse('biala-lista/not_found.json')]);
+
+        // no GUS key: nothing authoritative to ask. A white-list miss is not "does not exist".
+        config()->set('filament-vat-id.gus.key', null);
+        config()->set('filament-vat-id.gus.environment', 'prod');
+        $this->assertSame(VerificationStatus::Skipped, $manager->verify('', TaxIdType::PlNip, '5260250995')->status);
+        Http::assertNothingSent();
+
+        config()->set('filament-vat-id.gus.key', 'abcde12345abcde12345');
+        config()->set('filament-vat-id.gus.environment', 'test');
+        $this->app->forgetInstance(\Illuminate\Http\Client\Factory::class);
+        Http::clearResolvedInstance(\Illuminate\Http\Client\Factory::class);
+        Http::fake(['wyszukiwarkaregontest.stat.gov.pl/*' => Http::sequence()
+            ->push(Fixture::text('gus/login.txt'))
+            ->push(Fixture::text('gus/search_not_found.txt')),
+        ]);
+
+        $this->assertSame(VerificationStatus::NotFound, $manager->verify('', TaxIdType::PlNip, '5260250995')->status);
+    }
+
+    public function test_verification_stops_at_the_first_unavailable_registry(): void
+    {
+        $first = new CountingRegistry(unavailable: true);
+        $second = new class extends CountingRegistry {};
+        config()->set('filament-vat-id.registries', []);
+        $manager = app(RegistryManager::class)->extend($first)->extend($second);
+
+        $this->assertSame(VerificationStatus::Unavailable, $manager->verify('DE', TaxIdType::EuVat, 'DE136695976')->status);
+        $this->assertSame(1, CountingRegistry::$calls);
+
+        // a lookup (not verification) goes on to the next registry
+        CountingRegistry::$calls = 0;
+        $this->assertSame('counting', $manager->lookup('DE', TaxIdType::EuVat, 'DE136695976')?->source);
+        $this->assertSame(2, CountingRegistry::$calls);
+    }
+
+    public function test_the_total_timeout_stops_the_chain(): void
+    {
+        config()->set('filament-vat-id.registries', []);
+        config()->set('filament-vat-id.total_timeout', 1);
+        $slow = new CountingRegistry(sleep: 1_200_000, found: false);
+        $manager = app(RegistryManager::class)->extend($slow)->extend(new class extends CountingRegistry {});
+
+        CountingRegistry::$calls = 0;
+
+        try {
+            $manager->lookup('DE', TaxIdType::EuVat, 'DE136695976');
+            $this->fail('Expected RegistryUnavailable');
+        } catch (RegistryUnavailable $e) {
+            $this->assertStringContainsString('total timeout', $e->getMessage());
+        }
+
+        $this->assertSame(1, CountingRegistry::$calls);
+    }
+
+    public function test_the_cache_key_includes_the_type(): void
+    {
+        config()->set('filament-vat-id.registries', []);
+        $manager = app(RegistryManager::class)->extend(new CountingRegistry(types: [TaxIdType::CzIco, TaxIdType::CzDic], country: 'CZ'));
+        CountingRegistry::$calls = 0;
+
+        $manager->lookup('', TaxIdType::CzIco, '45274649');
+        $manager->lookup('', TaxIdType::CzDic, '45274649');
+        $manager->lookup('', TaxIdType::CzDic, '45274649');
+
+        $this->assertSame(2, CountingRegistry::$calls);
+    }
+
+    public function test_extend_ignores_a_class_that_is_already_registered(): void
+    {
+        config()->set('filament-vat-id.registries', []);
+        $manager = app(RegistryManager::class);
+
+        $manager->extend(new CountingRegistry)->extend(new CountingRegistry)->extend(CountingRegistry::class);
+
+        $this->assertCount(1, $manager->registries());
     }
 
     public function test_company_data_paths(): void
@@ -228,8 +362,54 @@ class StubUkrainianRegistry implements CompanyRegistry
         return $country === 'UA';
     }
 
-    public function lookup(string $country, string $number): ?CompanyData
+    public function canVerify(string $country, TaxIdType $type): bool
+    {
+        return false;
+    }
+
+    public function lookup(string $country, TaxIdType $type, string $number): ?CompanyData
     {
         return new CompanyData(name: 'Stub', source: 'stub');
+    }
+}
+
+class CountingRegistry implements CompanyRegistry
+{
+    public static int $calls = 0;
+
+    /**
+     * @param list<TaxIdType> $types
+     */
+    public function __construct(
+        private bool $unavailable = false,
+        private int $sleep = 0,
+        private array $types = [TaxIdType::EuVat],
+        private string $country = 'DE',
+        private bool $found = true,
+    ) {}
+
+    public function supports(string $country, TaxIdType $type): bool
+    {
+        return $country === $this->country && in_array($type, $this->types, true);
+    }
+
+    public function canVerify(string $country, TaxIdType $type): bool
+    {
+        return $this->supports($country, $type);
+    }
+
+    public function lookup(string $country, TaxIdType $type, string $number): ?CompanyData
+    {
+        self::$calls++;
+
+        if ($this->sleep > 0) {
+            usleep($this->sleep);
+        }
+
+        if ($this->unavailable) {
+            throw new RegistryUnavailable('counting', 'down');
+        }
+
+        return $this->found ? new CompanyData(name: 'X', source: 'counting') : null;
     }
 }

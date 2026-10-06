@@ -16,6 +16,7 @@ return [
         'invalid' => 'The :attribute is not a valid :type.',
         'not_registered' => 'The :attribute is not registered (:type).',
         'unavailable' => 'The :attribute could not be verified because the registry is unavailable. Try again later.',
+        'inactive' => 'The :attribute belongs to a company that is no longer active (:type).',
     ],
     'lookup' => [
         'action' => 'Look up',

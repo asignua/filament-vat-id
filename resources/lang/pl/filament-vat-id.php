@@ -16,6 +16,7 @@ return [
         'invalid' => 'Pole :attribute nie jest prawidłowe (:type).',
         'not_registered' => 'Wartość pola :attribute nie jest zarejestrowana (:type).',
         'unavailable' => 'Nie udało się zweryfikować pola :attribute, ponieważ rejestr jest niedostępny. Spróbuj ponownie później.',
+        'inactive' => 'Pole :attribute należy do firmy, która nie jest już aktywna (:type).',
     ],
     'lookup' => [
         'action' => 'Wyszukaj',
@@ -28,7 +29,7 @@ return [
     ],
     'notifications' => [
         'unavailable_title' => 'Rejestr niedostępny',
-        'unavailable_saved' => 'Nie udało się zweryfikować numeru online, został zapisany w podanej postaci.',
+        'unavailable_saved' => 'Nie udało się zweryfikować numeru online, został zaakceptowany w podanej postaci.',
     ],
     'entry' => [
         'copied' => 'Skopiowano',

@@ -29,12 +29,18 @@ final class TaxIdValidator
             $value = substr($value, 2);
         }
 
+        // People drop the leading zeros of a ЄДРПОУ (it is always 8 digits).
+        if ($type === TaxIdType::UaEdrpou && preg_match('/^\d{5,7}$/D', $value) === 1) {
+            $value = str_pad($value, 8, '0', STR_PAD_LEFT);
+        }
+
         return $value;
     }
 
     /**
      * Splits an EU VAT number into [VIES prefix, national part]; the prefix is taken from the number, falling
-     * back to `$country`. Returns `null` when no known country can be determined or the two disagree.
+     * back to `$country`. When the country is known it wins: a value without that prefix is a national number as it
+     * stands. Returns `null` when no country can be determined.
      *
      * @return array{0: string, 1: string}|null
      */
@@ -43,18 +49,26 @@ final class TaxIdValidator
         $value = self::normalize($value, TaxIdType::EuVat);
         $given = $country !== null && trim($country) !== '' ? EuVatNumber::prefix($country) : null;
 
-        if (strlen($value) >= 2 && !ctype_digit($value[0]) && EuVatNumber::prefix(substr($value, 0, 2)) !== null) {
-            $prefix = (string) EuVatNumber::prefix(substr($value, 0, 2));
+        // The country is known: the number either carries exactly that prefix or has none. Anything else is taken as
+        // a national number as it is (a French key made of letters must not be read as another country's prefix).
+        if ($given !== null) {
+            return [$given, str_starts_with($value, $given) ? substr($value, 2) : $value];
+        }
 
-            // A prefix that disagrees with the chosen country is an error, not a silent override.
-            if ($given !== null && $given !== $prefix) {
-                return null;
-            }
-
+        if (strlen($value) >= 2 && !ctype_digit($value[0]) && ($prefix = EuVatNumber::prefix(substr($value, 0, 2))) !== null) {
             return [$prefix, substr($value, 2)];
         }
 
-        return $given === null ? null : [$given, $value];
+        return null;
+    }
+
+    /**
+     * Whether the chosen country can have EU VAT numbers at all. A non-EU country (UA, US…) given for an EU VAT
+     * field means "nothing to validate": `isValid()` passes such a value.
+     */
+    public static function isEuCountry(?string $country): bool
+    {
+        return $country === null || trim($country) === '' || EuVatNumber::prefix($country) !== null;
     }
 
     public static function isValid(string $value, TaxIdType $type, ?string $country = null): bool
@@ -64,6 +78,11 @@ final class TaxIdValidator
         }
 
         if ($type === TaxIdType::EuVat) {
+            // A non-EU country: not an EU VAT number, nothing to check.
+            if (!self::isEuCountry($country)) {
+                return true;
+            }
+
             $parts = self::splitEuVat($value, $country);
 
             return $parts !== null && EuVatNumber::isValid($parts[0], $parts[1]);

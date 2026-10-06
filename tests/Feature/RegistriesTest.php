@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Asignua\FilamentVatId\Tests\Feature;
 
 use Asignua\FilamentVatId\Enums\TaxIdType;
+use Asignua\FilamentVatId\Exceptions\NumberNotSupported;
 use Asignua\FilamentVatId\Exceptions\RegistryUnavailable;
 use Asignua\FilamentVatId\Registries\Ares;
 use Asignua\FilamentVatId\Registries\BialaLista;
@@ -24,7 +25,7 @@ class RegistriesTest extends TestCase
     {
         Http::fake(['*' => Fixture::jsonResponse('vies/valid.json')]);
 
-        $company = app(Vies::class)->lookup('PL', '5260250995');
+        $company = app(Vies::class)->lookup('PL', TaxIdType::EuVat, '5260250995');
 
         $this->assertNotNull($company);
         $this->assertSame('ORANGE POLSKA SPÓŁKA AKCYJNA', $company->name);
@@ -43,14 +44,14 @@ class RegistriesTest extends TestCase
     {
         Http::fake(['*' => Fixture::jsonResponse('vies/invalid.json')]);
 
-        $this->assertNull(app(Vies::class)->lookup('PL', '1234567890'));
+        $this->assertNull(app(Vies::class)->lookup('PL', TaxIdType::EuVat, '1234567890'));
     }
 
     public function test_vies_without_a_name_keeps_the_valid_flag(): void
     {
         Http::fake(['*' => Http::response(['valid' => true, 'name' => '---', 'address' => '---'])]);
 
-        $company = app(Vies::class)->lookup('DE', '136695976');
+        $company = app(Vies::class)->lookup('DE', TaxIdType::EuVat, '136695976');
 
         $this->assertNotNull($company);
         $this->assertSame('', $company->name);
@@ -62,7 +63,7 @@ class RegistriesTest extends TestCase
     {
         Http::fake(['*' => Fixture::jsonResponse('vies/valid.json')]);
 
-        app(Vies::class)->lookup('GR', 'EL094259216');
+        app(Vies::class)->lookup('GR', TaxIdType::EuVat, '094259216');
 
         Http::assertSent(fn (Request $r): bool => $r['countryCode'] === 'EL' && $r['vatNumber'] === '094259216');
     }
@@ -74,7 +75,7 @@ class RegistriesTest extends TestCase
         $this->expectException(RegistryUnavailable::class);
         $this->expectExceptionMessage('MS_UNAVAILABLE');
 
-        app(Vies::class)->lookup('DE', '136695976');
+        app(Vies::class)->lookup('DE', TaxIdType::EuVat, '136695976');
     }
 
     public function test_vies_server_error_and_timeout_are_unavailable(): void
@@ -82,7 +83,7 @@ class RegistriesTest extends TestCase
         $this->refake(['*' => Http::response('Bad gateway', 502)]);
 
         try {
-            app(Vies::class)->lookup('PL', '5260250995');
+            app(Vies::class)->lookup('PL', TaxIdType::EuVat, '5260250995');
             $this->fail('Expected RegistryUnavailable');
         } catch (RegistryUnavailable $e) {
             $this->assertSame('vies', $e->registry);
@@ -91,7 +92,7 @@ class RegistriesTest extends TestCase
         $this->refake(['*' => Fixture::timeout()]);
 
         $this->expectException(RegistryUnavailable::class);
-        app(Vies::class)->lookup('PL', '5260250995');
+        app(Vies::class)->lookup('PL', TaxIdType::EuVat, '5260250995');
     }
 
     public function test_vies_supports_only_eu_vat_of_eu_countries(): void
@@ -111,7 +112,7 @@ class RegistriesTest extends TestCase
     {
         Http::fake(['wl-api.mf.gov.pl/*' => Fixture::jsonResponse('biala-lista/found.json')]);
 
-        $company = app(BialaLista::class)->lookup('PL', '5260250995');
+        $company = app(BialaLista::class)->lookup('PL', TaxIdType::PlNip, '5260250995');
 
         $this->assertNotNull($company);
         $this->assertSame('ORANGE POLSKA SPÓŁKA AKCYJNA', $company->name);
@@ -140,7 +141,7 @@ class RegistriesTest extends TestCase
     {
         Http::fake(['wl-api.mf.gov.pl/*' => Fixture::jsonResponse('biala-lista/found.json')]);
 
-        app(BialaLista::class)->lookup('PL', '012100784');
+        app(BialaLista::class)->lookup('PL', TaxIdType::PlRegon, '012100784');
 
         Http::assertSent(fn (Request $r): bool => str_contains($r->url(), '/api/search/regon/012100784?date='));
     }
@@ -149,19 +150,32 @@ class RegistriesTest extends TestCase
     {
         Http::fake(['wl-api.mf.gov.pl/*' => Fixture::jsonResponse('biala-lista/not_found.json')]);
 
-        $this->assertNull(app(BialaLista::class)->lookup('PL', '1234567890'));
+        $this->assertNull(app(BialaLista::class)->lookup('PL', TaxIdType::PlNip, '1234567890'));
     }
 
-    public function test_biala_lista_a_bad_request_is_not_found_but_rate_limit_is_unavailable(): void
+    public function test_biala_lista_malformed_number_codes_are_not_found_other_400s_are_unavailable(): void
     {
-        Http::fake(['wl-api.mf.gov.pl/*' => Http::response(['code' => 'WL-112', 'message' => 'Nieprawidłowy NIP'], 400)]);
-        $this->assertNull(app(BialaLista::class)->lookup('PL', '1234567890'));
+        Http::fake(['wl-api.mf.gov.pl/*' => Http::response(['code' => 'WL-113', 'message' => "Pole 'NIP' ma nieprawidłową długość."], 400)]);
+        $this->assertNull(app(BialaLista::class)->lookup('PL', TaxIdType::PlNip, '1234567890'));
 
-        $this->refake(['wl-api.mf.gov.pl/*' => Http::response(['code' => 'WL-190', 'message' => 'Przekroczono limit'], 429)]);
+        // WL-102 = bad date format: a problem of the request, not a verdict on the number.
+        $this->refake(['wl-api.mf.gov.pl/*' => Http::response(['code' => 'WL-102', 'message' => 'Pole data ma nieprawidłowy format.'], 400)]);
+
+        try {
+            app(BialaLista::class)->lookup('PL', TaxIdType::PlNip, '5260250995');
+            $this->fail('Expected RegistryUnavailable');
+        } catch (RegistryUnavailable) {
+            $this->addToAssertionCount(1);
+        }
+    }
+
+    public function test_biala_lista_rate_limit_is_unavailable(): void
+    {
+        Http::fake(['wl-api.mf.gov.pl/*' => Http::response(['code' => 'WL-190', 'message' => 'Przekroczono limit'], 429)]);
 
         $this->expectException(RegistryUnavailable::class);
         $this->expectExceptionMessage('429');
-        app(BialaLista::class)->lookup('PL', '5260250995');
+        app(BialaLista::class)->lookup('PL', TaxIdType::PlNip, '5260250995');
     }
 
     public function test_biala_lista_server_error_and_timeout_are_unavailable(): void
@@ -169,7 +183,7 @@ class RegistriesTest extends TestCase
         Http::fake(['wl-api.mf.gov.pl/*' => Http::response('', 503)]);
 
         try {
-            app(BialaLista::class)->lookup('PL', '5260250995');
+            app(BialaLista::class)->lookup('PL', TaxIdType::PlNip, '5260250995');
             $this->fail('Expected RegistryUnavailable');
         } catch (RegistryUnavailable) {
             $this->addToAssertionCount(1);
@@ -178,14 +192,19 @@ class RegistriesTest extends TestCase
         $this->refake(['wl-api.mf.gov.pl/*' => Fixture::timeout()]);
 
         $this->expectException(RegistryUnavailable::class);
-        app(BialaLista::class)->lookup('PL', '5260250995');
+        app(BialaLista::class)->lookup('PL', TaxIdType::PlNip, '5260250995');
     }
 
     public function test_biala_lista_ignores_numbers_of_the_wrong_length_without_calling(): void
     {
         Http::fake();
 
-        $this->assertNull(app(BialaLista::class)->lookup('PL', '12345'));
+        try {
+            app(BialaLista::class)->lookup('PL', TaxIdType::PlNip, '12345');
+            $this->fail('Expected NumberNotSupported');
+        } catch (NumberNotSupported) {
+            $this->addToAssertionCount(1);
+        }
 
         Http::assertNothingSent();
     }
@@ -196,7 +215,7 @@ class RegistriesTest extends TestCase
     {
         Http::fake(['ares.gov.cz/*' => Fixture::jsonResponse('ares/found.json')]);
 
-        $company = app(Ares::class)->lookup('CZ', '45274649');
+        $company = app(Ares::class)->lookup('CZ', TaxIdType::CzIco, '45274649');
 
         $this->assertNotNull($company);
         $this->assertSame('ČEZ, a. s.', $company->name);
@@ -215,8 +234,14 @@ class RegistriesTest extends TestCase
     {
         Http::fake(['ares.gov.cz/*' => Fixture::jsonResponse('ares/found.json')]);
 
-        $this->assertNotNull(app(Ares::class)->lookup('CZ', 'CZ45274649'));
-        $this->assertNull(app(Ares::class)->lookup('CZ', '7103192745'));
+        $this->assertNotNull(app(Ares::class)->lookup('CZ', TaxIdType::CzIco, 'CZ45274649'));
+
+        try {
+            app(Ares::class)->lookup('CZ', TaxIdType::CzDic, '7103192745');
+            $this->fail('Expected NumberNotSupported');
+        } catch (NumberNotSupported) {
+            $this->addToAssertionCount(1);
+        }
 
         Http::assertSentCount(1);
     }
@@ -224,12 +249,12 @@ class RegistriesTest extends TestCase
     public function test_ares_not_found_unavailable_and_timeout(): void
     {
         Http::fake(['ares.gov.cz/*' => Fixture::jsonResponse('ares/not_found.json', 404)]);
-        $this->assertNull(app(Ares::class)->lookup('CZ', '12345678'));
+        $this->assertNull(app(Ares::class)->lookup('CZ', TaxIdType::CzIco, '12345678'));
 
         $this->refake(['ares.gov.cz/*' => Http::response('', 500)]);
 
         try {
-            app(Ares::class)->lookup('CZ', '45274649');
+            app(Ares::class)->lookup('CZ', TaxIdType::CzIco, '45274649');
             $this->fail('Expected RegistryUnavailable');
         } catch (RegistryUnavailable) {
             $this->addToAssertionCount(1);
@@ -238,7 +263,7 @@ class RegistriesTest extends TestCase
         $this->refake(['ares.gov.cz/*' => Fixture::timeout()]);
 
         $this->expectException(RegistryUnavailable::class);
-        app(Ares::class)->lookup('CZ', '45274649');
+        app(Ares::class)->lookup('CZ', TaxIdType::CzIco, '45274649');
     }
 
     public function test_ares_marks_ended_companies_inactive(): void
@@ -248,7 +273,7 @@ class RegistriesTest extends TestCase
 
         Http::fake(['ares.gov.cz/*' => Http::response($json)]);
 
-        $company = app(Ares::class)->lookup('CZ', '45274649');
+        $company = app(Ares::class)->lookup('CZ', TaxIdType::CzIco, '45274649');
 
         $this->assertNotNull($company);
         $this->assertFalse($company->active);
@@ -287,7 +312,7 @@ class RegistriesTest extends TestCase
             ->push(Fixture::text('gus/search_found.txt'), 200, ['Content-Type' => 'multipart/related; boundary="uuid:y"']),
         ]);
 
-        $company = app(GusBir::class)->lookup('PL', '5260250995');
+        $company = app(GusBir::class)->lookup('PL', TaxIdType::PlNip, '5260250995');
 
         $this->assertNotNull($company);
         $this->assertSame('ORANGE POLSKA SPÓŁKA AKCYJNA', $company->name);
@@ -325,8 +350,8 @@ class RegistriesTest extends TestCase
         ]);
 
         $gus = app(GusBir::class);
-        $gus->lookup('PL', '5260250995');
-        $gus->lookup('PL', '5260250995');
+        $gus->lookup('PL', TaxIdType::PlNip, '5260250995');
+        $gus->lookup('PL', TaxIdType::PlNip, '5260250995');
 
         Http::assertSentCount(3); // one login, two searches
     }
@@ -347,8 +372,35 @@ class RegistriesTest extends TestCase
             ->push(Fixture::text('gus/search_found.txt')),
         ]);
 
-        $this->assertNotNull(app(GusBir::class)->lookup('PL', '5260250995'));
+        $this->assertNotNull(app(GusBir::class)->lookup('PL', TaxIdType::PlNip, '5260250995'));
         Http::assertSentCount(4);
+    }
+
+    public function test_gus_error_code_7_logs_in_again_and_5_is_unavailable(): void
+    {
+        $this->gusConfig();
+        $error = static fn (string $code): string => '<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope"><s:Body><DaneSzukajPodmiotyResponse xmlns="http://CIS/BIR/PUBL/2014/07"><DaneSzukajPodmiotyResult>'
+            .htmlspecialchars("<root><dane><ErrorCode>{$code}</ErrorCode></dane></root>").'</DaneSzukajPodmiotyResult></DaneSzukajPodmiotyResponse></s:Body></s:Envelope>';
+
+        Http::fake(['wyszukiwarkaregontest.stat.gov.pl/*' => Http::sequence()
+            ->push(Fixture::text('gus/login.txt'))
+            ->push($error('7'))
+            ->push(Fixture::text('gus/login.txt'))
+            ->push(Fixture::text('gus/search_found.txt')),
+        ]);
+
+        $this->assertNotNull(app(GusBir::class)->lookup('PL', TaxIdType::PlNip, '5260250995'));
+        Http::assertSentCount(4);
+
+        $this->refake(['wyszukiwarkaregontest.stat.gov.pl/*' => Http::sequence()
+            ->push(Fixture::text('gus/login.txt'))
+            ->push($error('5')),
+        ]);
+        \Illuminate\Support\Facades\Cache::flush();
+
+        $this->expectException(RegistryUnavailable::class);
+        $this->expectExceptionMessage('ErrorCode 5');
+        app(GusBir::class)->lookup('PL', TaxIdType::PlNip, '5260250995');
     }
 
     public function test_gus_looks_up_a_regon_and_ignores_other_lengths(): void
@@ -360,8 +412,15 @@ class RegistriesTest extends TestCase
         ]);
 
         $gus = app(GusBir::class);
-        $this->assertNull($gus->lookup('PL', '12345'));
-        $gus->lookup('PL', '012100784');
+
+        try {
+            $gus->lookup('PL', TaxIdType::PlNip, '12345');
+            $this->fail('Expected NumberNotSupported');
+        } catch (NumberNotSupported) {
+            $this->addToAssertionCount(1);
+        }
+
+        $gus->lookup('PL', TaxIdType::PlNip, '012100784');
 
         Http::assertSent(fn (Request $r): bool => str_contains($r->body(), '<dat:Regon>012100784</dat:Regon>'));
     }
@@ -374,7 +433,7 @@ class RegistriesTest extends TestCase
             ->push(Fixture::text('gus/search_not_found.txt')),
         ]);
 
-        $this->assertNull(app(GusBir::class)->lookup('PL', '1234567890'));
+        $this->assertNull(app(GusBir::class)->lookup('PL', TaxIdType::PlNip, '1234567890'));
     }
 
     public function test_gus_rejected_key_is_unavailable(): void
@@ -385,7 +444,7 @@ class RegistriesTest extends TestCase
         $this->expectException(RegistryUnavailable::class);
         $this->expectExceptionMessage('API key');
 
-        app(GusBir::class)->lookup('PL', '5260250995');
+        app(GusBir::class)->lookup('PL', TaxIdType::PlNip, '5260250995');
     }
 
     public function test_gus_server_error_and_timeout_are_unavailable(): void
@@ -394,7 +453,7 @@ class RegistriesTest extends TestCase
         Http::fake(['wyszukiwarkaregontest.stat.gov.pl/*' => Http::response('', 500)]);
 
         try {
-            app(GusBir::class)->lookup('PL', '5260250995');
+            app(GusBir::class)->lookup('PL', TaxIdType::PlNip, '5260250995');
             $this->fail('Expected RegistryUnavailable');
         } catch (RegistryUnavailable) {
             $this->addToAssertionCount(1);
@@ -403,7 +462,7 @@ class RegistriesTest extends TestCase
         $this->refake(['wyszukiwarkaregontest.stat.gov.pl/*' => Fixture::timeout()]);
 
         $this->expectException(RegistryUnavailable::class);
-        app(GusBir::class)->lookup('PL', '5260250995');
+        app(GusBir::class)->lookup('PL', TaxIdType::PlNip, '5260250995');
     }
 
     public function test_gus_extracts_the_result_from_multipart_and_plain_soap(): void
