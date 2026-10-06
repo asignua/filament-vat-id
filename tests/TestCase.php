@@ -18,6 +18,7 @@ use Filament\Support\SupportServiceProvider;
 use Filament\Tables\TablesServiceProvider;
 use Filament\Widgets\WidgetsServiceProvider;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Livewire\LivewireServiceProvider;
 use Orchestra\Testbench\TestCase as Orchestra;
 use RyanChandler\BladeCaptureDirective\BladeCaptureDirectiveServiceProvider;
@@ -31,6 +32,10 @@ abstract class TestCase extends Orchestra
     protected function setUp(): void
     {
         parent::setUp();
+
+        Cache::flush();
+        config()->set('filament-vat-id.cache.store', 'array');
+        config()->set('filament-vat-id.cache.ttl', 3600);
 
         $this->actingAs(User::factory()->create());
         Filament::setCurrentPanel('admin');
@@ -62,6 +67,7 @@ abstract class TestCase extends Orchestra
         $app['config']->set('app.key', 'base64:'.base64_encode(str_repeat('a', 32)));
         $app['config']->set('database.default', 'testing');
         $app['config']->set('auth.providers.users.model', User::class);
+        $app['config']->set('cache.default', 'array');
     }
 
     protected function defineDatabaseMigrations(): void

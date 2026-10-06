@@ -1,0 +1,19 @@
+{
+  "countryCode" : "PL",
+  "vatNumber" : "1234567890",
+  "requestDate" : "2026-10-06T19:50:04.720Z",
+  "valid" : false,
+  "requestIdentifier" : "",
+  "name" : "---",
+  "address" : "---",
+  "traderName" : "---",
+  "traderStreet" : "---",
+  "traderPostalCode" : "---",
+  "traderCity" : "---",
+  "traderCompanyType" : "---",
+  "traderNameMatch" : "NOT_PROCESSED",
+  "traderStreetMatch" : "NOT_PROCESSED",
+  "traderPostalCodeMatch" : "NOT_PROCESSED",
+  "traderCityMatch" : "NOT_PROCESSED",
+  "traderCompanyTypeMatch" : "NOT_PROCESSED"
+}

@@ -1,0 +1,33 @@
+{
+  "result": {
+    "subject": {
+      "name": "ORANGE POLSKA SPÓŁKA AKCYJNA",
+      "nip": "5260250995",
+      "statusVat": "Czynny",
+      "regon": "012100784",
+      "pesel": null,
+      "krs": "0000010681",
+      "residenceAddress": null,
+      "workingAddress": "ALEJE JEROZOLIMSKIE 160, 02-326 WARSZAWA",
+      "representatives": [],
+      "authorizedClerks": [],
+      "partners": [],
+      "registrationLegalDate": "1996-01-01",
+      "registrationDenialBasis": null,
+      "registrationDenialDate": null,
+      "restorationBasis": null,
+      "restorationDate": null,
+      "removalBasis": null,
+      "removalDate": null,
+      "exemptionSmeDate": null,
+      "accountNumbers": [
+        "13103015080000000503131075",
+        "83103015080000000503131076",
+        "56103015080000000503131077"
+      ],
+      "hasVirtualAccounts": true
+    },
+    "requestId": "REDACTED",
+    "requestDateTime": "06-10-2026 21:46:14"
+  }
+}

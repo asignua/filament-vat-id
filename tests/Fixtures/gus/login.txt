@@ -1,0 +1,7 @@
+--uuid:2cb21cfb-e83c-48fa-b263-c6526cf37eff+id=807983
+Content-ID: <http://tempuri.org/0>
+Content-Transfer-Encoding: 8bit
+Content-Type: application/xop+xml;charset=utf-8;type="application/soap+xml"
+
+<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope" xmlns:a="http://www.w3.org/2005/08/addressing"><s:Header><a:Action s:mustUnderstand="1">http://CIS/BIR/PUBL/2014/07/IUslugaBIRzewnPubl/ZalogujResponse</a:Action></s:Header><s:Body><ZalogujResponse xmlns="http://CIS/BIR/PUBL/2014/07"><ZalogujResult>fub7fg74ygrugu2ze56x</ZalogujResult></ZalogujResponse></s:Body></s:Envelope>
+--uuid:2cb21cfb-e83c-48fa-b263-c6526cf37eff+id=807983--

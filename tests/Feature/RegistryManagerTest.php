@@ -1,0 +1,235 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Asignua\FilamentVatId\Tests\Feature;
+
+use Asignua\FilamentVatId\Contracts\CompanyRegistry;
+use Asignua\FilamentVatId\Data\CompanyData;
+use Asignua\FilamentVatId\Enums\TaxIdType;
+use Asignua\FilamentVatId\Enums\VerificationStatus;
+use Asignua\FilamentVatId\Exceptions\RegistryUnavailable;
+use Asignua\FilamentVatId\Registries\Ares;
+use Asignua\FilamentVatId\Registries\BialaLista;
+use Asignua\FilamentVatId\Registries\GusBir;
+use Asignua\FilamentVatId\Registries\Vies;
+use Asignua\FilamentVatId\Support\RegistryManager;
+use Asignua\FilamentVatId\Tests\Fixtures\Fixture;
+use Asignua\FilamentVatId\Tests\TestCase;
+use Illuminate\Support\Facades\Http;
+
+class RegistryManagerTest extends TestCase
+{
+    public function test_registries_are_picked_by_country_and_type_in_the_configured_order(): void
+    {
+        config()->set('filament-vat-id.gus.key', 'k');
+        $manager = app(RegistryManager::class);
+
+        $names = fn (string $country, TaxIdType $type): array => array_map(fn (CompanyRegistry $r): string => $r::class, $manager->registriesFor($country, $type));
+
+        $this->assertSame([BialaLista::class, GusBir::class, Vies::class], $names('PL', TaxIdType::EuVat));
+        $this->assertSame([BialaLista::class, GusBir::class], $names('PL', TaxIdType::PlNip));
+        $this->assertSame([Ares::class, Vies::class], $names('CZ', TaxIdType::EuVat));
+        $this->assertSame([Ares::class], $names('CZ', TaxIdType::CzIco));
+        $this->assertSame([Vies::class], $names('DE', TaxIdType::EuVat));
+        $this->assertSame([], $names('UA', TaxIdType::UaEdrpou), 'Ukraine has no free registry');
+        $this->assertFalse($manager->supports('UA', TaxIdType::UaRnokpp));
+
+        config()->set('filament-vat-id.registries', [Vies::class, BialaLista::class]);
+        $this->assertSame([Vies::class, BialaLista::class], $names('PL', TaxIdType::EuVat));
+    }
+
+    public function test_results_are_cached_including_not_found(): void
+    {
+        Http::fake([
+            'ares.gov.cz/*/45274649' => Fixture::jsonResponse('ares/found.json'),
+            'ares.gov.cz/*/12345678' => Fixture::jsonResponse('ares/not_found.json', 404),
+        ]);
+        $manager = app(RegistryManager::class);
+
+        $first = $manager->lookup('CZ', TaxIdType::CzIco, '45274649');
+        $second = $manager->lookup('CZ', TaxIdType::CzIco, '45274649');
+
+        $this->assertSame('ČEZ, a. s.', $first?->name);
+        $this->assertEquals($first, $second);
+        Http::assertSentCount(1);
+
+        $this->assertNull($manager->lookup('CZ', TaxIdType::CzIco, '12345678'));
+        $this->assertNull($manager->lookup('CZ', TaxIdType::CzIco, '12345678'));
+        Http::assertSentCount(2);
+    }
+
+    public function test_unavailable_answers_are_never_cached(): void
+    {
+        Http::fake(['ares.gov.cz/*' => Http::sequence()->push('', 500)->push(Fixture::text('ares/found.json'), 200, ['Content-Type' => 'application/json'])]);
+        $manager = app(RegistryManager::class);
+
+        try {
+            $manager->lookup('CZ', TaxIdType::CzIco, '45274649');
+            $this->fail('Expected RegistryUnavailable');
+        } catch (RegistryUnavailable) {
+            $this->addToAssertionCount(1);
+        }
+
+        $this->assertSame('ČEZ, a. s.', $manager->lookup('CZ', TaxIdType::CzIco, '45274649')?->name);
+    }
+
+    public function test_cache_can_be_disabled(): void
+    {
+        config()->set('filament-vat-id.cache.enabled', false);
+        Http::fake(['ares.gov.cz/*' => Fixture::jsonResponse('ares/found.json')]);
+        $manager = app(RegistryManager::class);
+
+        $manager->lookup('CZ', TaxIdType::CzIco, '45274649');
+        $manager->lookup('CZ', TaxIdType::CzIco, '45274649');
+
+        Http::assertSentCount(2);
+    }
+
+    public function test_cached_company_reads_without_the_network(): void
+    {
+        Http::fake(['ares.gov.cz/*' => Fixture::jsonResponse('ares/found.json')]);
+        $manager = app(RegistryManager::class);
+
+        $this->assertNull($manager->cachedCompany('CZ', TaxIdType::CzIco, '45274649'));
+
+        $manager->lookup('CZ', TaxIdType::CzIco, '45274649');
+
+        $this->assertSame('ČEZ, a. s.', $manager->cachedCompany('CZ', TaxIdType::CzIco, 'CZ45274649')?->name);
+        Http::assertSentCount(1);
+    }
+
+    public function test_falls_through_to_the_next_registry(): void
+    {
+        config()->set('filament-vat-id.registries', [BialaLista::class, Vies::class]);
+        Http::fake([
+            'wl-api.mf.gov.pl/*' => Http::response('', 503),
+            'ec.europa.eu/*' => Fixture::jsonResponse('vies/valid.json'),
+        ]);
+
+        $company = app(RegistryManager::class)->lookup('PL', TaxIdType::EuVat, 'PL5260250995');
+
+        $this->assertSame('vies', $company?->source);
+    }
+
+    public function test_a_not_found_answer_does_not_hide_an_unavailable_registry(): void
+    {
+        config()->set('filament-vat-id.registries', [BialaLista::class, Vies::class]);
+        Http::fake([
+            'wl-api.mf.gov.pl/*' => Fixture::jsonResponse('biala-lista/not_found.json'),
+            'ec.europa.eu/*' => Fixture::jsonResponse('vies/ms_unavailable.json'),
+        ]);
+
+        $this->expectException(RegistryUnavailable::class);
+
+        app(RegistryManager::class)->lookup('PL', TaxIdType::EuVat, 'PL5260250995');
+    }
+
+    public function test_only_restricts_to_one_registry(): void
+    {
+        Http::fake([
+            'wl-api.mf.gov.pl/*' => Fixture::jsonResponse('biala-lista/found.json'),
+            'ec.europa.eu/*' => Fixture::jsonResponse('vies/valid.json'),
+        ]);
+
+        $company = app(RegistryManager::class)->lookup('PL', TaxIdType::EuVat, 'PL5260250995', Vies::class);
+
+        $this->assertSame('vies', $company?->source);
+        Http::assertSentCount(1);
+    }
+
+    public function test_verify_outcomes(): void
+    {
+        $manager = app(RegistryManager::class);
+
+        Http::fake(['ec.europa.eu/*' => Fixture::jsonResponse('vies/valid.json')]);
+        $this->assertSame(VerificationStatus::Verified, $manager->verify('', TaxIdType::EuVat, 'DE136695976')->status);
+
+        $this->assertSame(VerificationStatus::Skipped, $manager->verify('UA', TaxIdType::UaEdrpou, '14360570')->status);
+        $this->assertSame(VerificationStatus::Skipped, $manager->verify('', TaxIdType::EuVat, '136695976')->status, 'no country');
+    }
+
+    public function test_verify_not_found_and_unavailable(): void
+    {
+        $manager = app(RegistryManager::class);
+
+        Http::fake(['ec.europa.eu/*' => Fixture::jsonResponse('vies/invalid.json')]);
+        $this->assertSame(VerificationStatus::NotFound, $manager->verify('', TaxIdType::EuVat, 'DE136695976')->status);
+
+        $this->app->forgetInstance(\Illuminate\Http\Client\Factory::class);
+        Http::clearResolvedInstance(\Illuminate\Http\Client\Factory::class);
+        \Illuminate\Support\Facades\Cache::flush();
+        Http::fake(['ec.europa.eu/*' => Fixture::jsonResponse('vies/ms_unavailable.json')]);
+
+        $verification = $manager->verify('', TaxIdType::EuVat, 'DE136695976');
+        $this->assertSame(VerificationStatus::Unavailable, $verification->status);
+        $this->assertStringContainsString('MS_UNAVAILABLE', (string) $verification->reason);
+    }
+
+    public function test_on_unavailable_config(): void
+    {
+        $manager = app(RegistryManager::class);
+
+        $this->assertSame('warn', $manager->onUnavailable());
+
+        foreach (['allow', 'warn', 'fail'] as $mode) {
+            config()->set('filament-vat-id.on_unavailable', $mode);
+            $this->assertSame($mode, $manager->onUnavailable());
+        }
+
+        config()->set('filament-vat-id.on_unavailable', 'bogus');
+        $this->assertSame('warn', $manager->onUnavailable());
+    }
+
+    public function test_a_custom_registry_can_be_plugged_in_for_ukraine(): void
+    {
+        $custom = new class implements CompanyRegistry
+        {
+            public function supports(string $country, TaxIdType $type): bool
+            {
+                return $country === 'UA' && $type === TaxIdType::UaEdrpou;
+            }
+
+            public function lookup(string $country, string $number): ?CompanyData
+            {
+                return $number === '14360570' ? new CompanyData(name: 'PrivatBank', source: 'custom') : null;
+            }
+        };
+
+        $manager = app(RegistryManager::class)->extend($custom);
+
+        $this->assertSame('PrivatBank', $manager->lookup('UA', TaxIdType::UaEdrpou, '14360570')?->name);
+        $this->assertNull($manager->lookup('UA', TaxIdType::UaEdrpou, '00032129'));
+    }
+
+    public function test_custom_registries_can_be_listed_in_config_by_class(): void
+    {
+        config()->set('filament-vat-id.registries', [StubUkrainianRegistry::class]);
+
+        $this->assertSame('Stub', app(RegistryManager::class)->lookup('UA', TaxIdType::UaEdrpou, '14360570')?->name);
+    }
+
+    public function test_company_data_paths(): void
+    {
+        $company = new CompanyData(name: 'ACME', source: 's', address: '', bankAccounts: ['PL1', 'PL2']);
+
+        $this->assertSame('ACME', $company->get('name'));
+        $this->assertNull($company->get('address'), 'empty strings read as missing');
+        $this->assertSame('PL2', $company->get('bankAccounts.1'));
+        $this->assertNull($company->get('bankAccounts.5'));
+        $this->assertEquals($company, CompanyData::fromArray($company->toArray()));
+    }
+}
+
+class StubUkrainianRegistry implements CompanyRegistry
+{
+    public function supports(string $country, TaxIdType $type): bool
+    {
+        return $country === 'UA';
+    }
+
+    public function lookup(string $country, string $number): ?CompanyData
+    {
+        return new CompanyData(name: 'Stub', source: 'stub');
+    }
+}
