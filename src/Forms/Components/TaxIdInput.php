@@ -353,4 +353,21 @@ class TaxIdInput extends TextInput
             ->title(__('filament-vat-id::filament-vat-id.'.$key, $replace))
             ->send();
     }
+
+    /**
+     * Filament lower-cases the first letter of the label in validation messages ("The iBAN must..."). A label that
+     * opens with an acronym ("IBAN", "VAT / Tax ID") is kept as written; your own `->validationAttribute()` wins.
+     */
+    public function getValidationAttribute(): string
+    {
+        if (filled($this->evaluate($this->validationAttribute))) {
+            return parent::getValidationAttribute();
+        }
+
+        $label = $this->getLabel();
+
+        return is_string($label) && preg_match('/^\p{Lu}{2}/u', $label) === 1
+            ? $label
+            : parent::getValidationAttribute();
+    }
 }

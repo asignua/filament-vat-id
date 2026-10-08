@@ -1,5 +1,7 @@
 # Filament VAT ID
 
+<img class="filament-hidden" src="https://raw.githubusercontent.com/asignua/filament-vat-id/v1.0.2/art/cover.jpg" alt="Filament VAT ID">
+
 [![Tests](https://img.shields.io/github/actions/workflow/status/asignua/filament-vat-id/tests.yml?branch=main&label=tests)](https://github.com/asignua/filament-vat-id/actions/workflows/tests.yml)
 
 Validate and look up tax identifiers in Filament forms. Offline rules check the format and the checksum of EU VAT numbers
@@ -9,7 +11,19 @@ and bank accounts into the sibling fields. No API key is needed except for GUS.
 
 ## Screenshots
 
-TODO: add images to `art/` (cover.jpg first) and reference them here.
+One click on the search icon looks the company up and fills name, address, REGON and bank account:
+
+![Looking a company up by its VAT number](https://raw.githubusercontent.com/asignua/filament-vat-id/v1.0.2/art/lookup.jpg)
+
+Numbers are checked offline first — format and check digits — before any registry is asked:
+
+![A checksum error for a mistyped number](https://raw.githubusercontent.com/asignua/filament-vat-id/v1.0.2/art/validation.jpg)
+
+![Formatted tax IDs in a table](https://raw.githubusercontent.com/asignua/filament-vat-id/v1.0.2/art/list.jpg)
+
+Dark mode:
+
+![Dark mode](https://raw.githubusercontent.com/asignua/filament-vat-id/v1.0.2/art/list-dark.jpg)
 
 ## Requirements
 

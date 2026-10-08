@@ -447,4 +447,21 @@ enum TestCountry: string
 enum TestUnitCountry
 {
     case Greece;
+
+    public function test_an_acronym_label_is_kept_in_validation_messages(): void
+    {
+        $this->assertSame('VAT / Tax ID', TaxIdInput::make('t')->label('VAT / Tax ID')->getValidationAttribute());
+        $this->assertSame('tax ID', TaxIdInput::make('t')->label('Tax ID')->getValidationAttribute());
+        $this->assertSame('x', TaxIdInput::make('t')->label('VAT')->validationAttribute('x')->getValidationAttribute());
+    }
+
+    public function test_the_message_for_an_acronym_label_is_not_lowercased(): void
+    {
+        Livewire::test(CompanyForm::class)
+            ->fillForm(['country' => 'PL', 'tax_id' => '526-025-09-96'])
+            ->call('save')
+            ->assertHasFormErrors(['tax_id'])
+            ->assertSee('The VAT / Tax ID')
+            ->assertDontSee('vAT');
+    }
 }
