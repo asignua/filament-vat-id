@@ -2,7 +2,7 @@
 
 All notable changes to `asignua/filament-vat-id` are documented here.
 
-## Unreleased
+## v1.0.1 - 2026-10-08
 
 - Fixed: a country given as an enum (a Select backed by an enum, an enum-cast model attribute) is understood by `TaxIdInput` and `TaxIdEntry`.
 - Fixed: GUS lookup picks the open record when a NIP lists a closed earlier activity first.
