@@ -63,6 +63,11 @@ class Ares extends AbstractRegistry
         $postcode = isset($seat['psc']) && is_numeric($seat['psc']) ? str_pad((string) $seat['psc'], 5, '0', STR_PAD_LEFT) : null;
         $ended = self::clean($json['datumZaniku'] ?? null);
 
+        // The IČO exists, but a DIČ was never issued to it: the DIČ itself is not registered.
+        if ($type === TaxIdType::CzDic && self::clean($json['dic'] ?? null) === null) {
+            return null;
+        }
+
         return new CompanyData(
             name: self::clean($json['obchodniJmeno']) ?? '',
             source: $this->name(),

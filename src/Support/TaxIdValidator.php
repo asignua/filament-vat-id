@@ -38,6 +38,23 @@ final class TaxIdValidator
     }
 
     /**
+     * A country as a form state or a record attribute hands it over: a string, or an enum (a Select backed by an
+     * enum, an enum cast on the model) / Stringable. Returns the upper-cased trimmed code, `null` when blank.
+     */
+    public static function countryCode(mixed $country): ?string
+    {
+        if ($country instanceof \BackedEnum) {
+            $country = (string) $country->value;
+        } elseif ($country instanceof \UnitEnum) {
+            $country = $country->name;
+        } elseif ($country instanceof \Stringable) {
+            $country = (string) $country;
+        }
+
+        return is_string($country) && trim($country) !== '' ? strtoupper(trim($country)) : null;
+    }
+
+    /**
      * Splits an EU VAT number into [VIES prefix, national part]; the prefix is taken from the number, falling
      * back to `$country`. When the country is known it wins: a value without that prefix is a national number as it
      * stands. Returns `null` when no country can be determined.
@@ -52,7 +69,10 @@ final class TaxIdValidator
         // The country is known: the number either carries exactly that prefix or has none. Anything else is taken as
         // a national number as it is (a French key made of letters must not be read as another country's prefix).
         if ($given !== null) {
-            return [$given, str_starts_with($value, $given) ? substr($value, 2) : $value];
+            // Greece is EL in VIES but GR in ISO: a number typed with the ISO prefix is still that country's.
+            $prefixed = str_starts_with($value, $given) || ($given === 'EL' && str_starts_with($value, 'GR'));
+
+            return [$given, $prefixed ? substr($value, 2) : $value];
         }
 
         if (strlen($value) >= 2 && !ctype_digit($value[0]) && ($prefix = EuVatNumber::prefix(substr($value, 0, 2))) !== null) {

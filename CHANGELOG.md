@@ -2,6 +2,17 @@
 
 All notable changes to `asignua/filament-vat-id` are documented here.
 
+## Unreleased
+
+- Fixed: a country given as an enum (a Select backed by an enum, an enum-cast model attribute) is understood by `TaxIdInput` and `TaxIdEntry`.
+- Fixed: GUS lookup picks the open record when a NIP lists a closed earlier activity first.
+- Fixed: a Greek number typed with the ISO `GR` prefix passes when the country is `GR`.
+- Fixed: an EU VAT field with a non-EU country is never verified remotely, as documented.
+- Fixed: `TaxIdEntry` copies the number with the country prefix it displays.
+- Fixed: the "Look up" button is disabled on a disabled or read-only field.
+- Fixed: a transport error carrying an HTTP error response is reported as "registry unavailable" instead of crashing.
+- Fixed: ARES no longer confirms a Czech DIČ when the subject has no DIČ issued.
+
 ## v1.0.0
 
 - `TaxIdInput` form field: offline format + checksum validation, `->vies()` remote check on save, `->lookup()` button that

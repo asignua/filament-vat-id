@@ -33,7 +33,24 @@ class TaxIdEntry extends TextEntry
             ? TaxIdValidator::format($state, $this->getTaxIdType(), $this->getTaxIdCountry())
             : $state);
 
-        $this->copyableState(fn (mixed $state): ?string => is_string($state) ? TaxIdValidator::normalize($state, $this->getTaxIdType()) : null);
+        // What is copied keeps the country prefix the entry displays (a VAT-UE number is useless without it).
+        $this->copyableState(function (mixed $state): ?string {
+            if (!is_string($state)) {
+                return null;
+            }
+
+            $type = $this->getTaxIdType();
+
+            if ($type === TaxIdType::EuVat) {
+                $parts = TaxIdValidator::splitEuVat($state, $this->getTaxIdCountry());
+
+                if ($parts !== null) {
+                    return $parts[0].$parts[1];
+                }
+            }
+
+            return TaxIdValidator::normalize($state, $type);
+        });
     }
 
     public function type(TaxIdType|Closure $type): static
@@ -76,10 +93,6 @@ class TaxIdEntry extends TextEntry
     {
         $country = $this->evaluate($this->taxIdCountry);
 
-        if (is_string($country) && trim($country) !== '') {
-            return strtoupper(trim($country));
-        }
-
-        return $this->getTaxIdType()->country();
+        return TaxIdValidator::countryCode($country) ?? $this->getTaxIdType()->country();
     }
 }

@@ -8,6 +8,7 @@ use Asignua\FilamentVatId\Contracts\CompanyRegistry;
 use Asignua\FilamentVatId\Exceptions\RegistryUnavailable;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
+use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 
@@ -38,7 +39,8 @@ abstract class AbstractRegistry implements CompanyRegistry
     {
         try {
             return $call();
-        } catch (ConnectionException $e) {
+        } catch (ConnectionException|RequestException $e) {
+            // A transport error after the headers arrived carries the 4xx/5xx response and surfaces as RequestException.
             throw new RegistryUnavailable($this->name(), $e->getMessage(), $e);
         }
     }

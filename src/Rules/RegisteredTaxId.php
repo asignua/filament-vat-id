@@ -49,6 +49,11 @@ class RegisteredTaxId implements ValidationRule
             return;
         }
 
+        // A non-EU country on an EU VAT field means nothing to verify (the offline check let it through unchecked).
+        if ($this->type === TaxIdType::EuVat && !TaxIdValidator::isEuCountry($country)) {
+            return;
+        }
+
         $manager = app(RegistryManager::class);
         $verification = $manager->verify($country ?? '', $this->type, (string) $value, $this->registry);
 

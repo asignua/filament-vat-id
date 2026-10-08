@@ -105,11 +105,20 @@ class GusBir extends AbstractRegistry
             throw new RegistryUnavailable($this->name(), 'Unreadable result.');
         }
 
-        $record = [];
+        $records = [];
 
-        foreach ($xml->dane[0]?->children() ?? [] as $child) {
-            $record[$child->getName()] = trim((string) $child);
+        foreach ($xml->dane as $dane) {
+            $record = [];
+
+            foreach ($dane->children() as $child) {
+                $record[$child->getName()] = trim((string) $child);
+            }
+
+            $records[] = $record;
         }
+
+        // The error answer is a single <dane>; the rest only matters for real records.
+        $record = $records[0] ?? [];
 
         if (isset($record['ErrorCode'])) {
             // BIR 1.1: 4 = no entity for the criteria; 7 = no session (the sid expired): log in again once;
@@ -125,6 +134,14 @@ class GusBir extends AbstractRegistry
             }
 
             throw new RegistryUnavailable($this->name(), 'ErrorCode '.$record['ErrorCode']);
+        }
+
+        // One NIP can list several records (a closed earlier activity next to the current one): prefer an open one,
+        // fall back to the first only when all are closed.
+        foreach ($records as $candidate) {
+            if (($candidate['DataZakonczeniaDzialalnosci'] ?? '') === '') {
+                return $candidate;
+            }
         }
 
         return $record;

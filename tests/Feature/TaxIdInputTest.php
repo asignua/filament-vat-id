@@ -8,6 +8,7 @@ use Asignua\FilamentVatId\Enums\TaxIdType;
 use Asignua\FilamentVatId\Forms\Components\TaxIdInput;
 use Asignua\FilamentVatId\Infolists\Components\TaxIdEntry;
 use Asignua\FilamentVatId\Registries\BialaLista;
+use Asignua\FilamentVatId\Support\TaxIdValidator;
 use Asignua\FilamentVatId\Tests\Fixtures\Fixture;
 use Asignua\FilamentVatId\Tests\TestCase;
 use Filament\Actions\Testing\TestAction;
@@ -367,6 +368,56 @@ class TaxIdInputTest extends TestCase
         $this->assertSame('PL 5260250995', $entry->formatState($entry->getState()));
     }
 
+    public function test_an_enum_country_is_understood(): void
+    {
+        $this->assertSame('PL', TaxIdValidator::countryCode(TestCountry::Poland));
+        $this->assertSame('GREECE', TaxIdValidator::countryCode(TestUnitCountry::Greece));
+        $this->assertNull(TaxIdValidator::countryCode(' '));
+
+        $input = TaxIdInput::make('vat')->country(fn (): TestCountry => TestCountry::Poland);
+        $this->assertSame('PL', $input->getTaxIdCountry());
+
+        $record = new class(['vat' => '5260250995', 'country' => 'pl']) extends User
+        {
+            protected function casts(): array
+            {
+                return ['country' => TestCountry::class];
+            }
+        };
+
+        $entry = $this->entry(TaxIdEntry::make('vat')->countryField('country'), $record);
+
+        $this->assertSame('PL', $entry->getTaxIdCountry());
+        $this->assertSame('PL 5260250995', $entry->formatState($entry->getState()));
+    }
+
+    public function test_the_entry_copies_the_number_with_the_displayed_prefix(): void
+    {
+        $entry = $this->entry(TaxIdEntry::make('vat')->countryField('country'), new User(['vat' => '5260250995', 'country' => 'PL']));
+
+        $this->assertSame('PL5260250995', $entry->getCopyableState('5260250995'));
+    }
+
+    public function test_greek_numbers_with_the_iso_prefix_pass_with_the_country_given(): void
+    {
+        Livewire::test(CompanyForm::class)
+            ->fillForm(['country' => 'GR', 'tax_id' => 'GR094014298'])
+            ->call('save')
+            ->assertHasNoFormErrors();
+    }
+
+    public function test_a_non_eu_country_is_not_verified_remotely(): void
+    {
+        Http::fake();
+
+        Livewire::test(CompanyForm::class, ['remote' => true])
+            ->fillForm(['country' => 'UA', 'tax_id' => 'DE12345'])
+            ->call('save')
+            ->assertHasNoFormErrors();
+
+        Http::assertNothingSent();
+    }
+
     public function test_the_entry_keeps_a_blank_state(): void
     {
         $entry = $this->entry(TaxIdEntry::make('vat'), ['vat' => null]);
@@ -386,4 +437,14 @@ class TaxIdInputTest extends TestCase
 
         return $built;
     }
+}
+
+enum TestCountry: string
+{
+    case Poland = 'pl';
+}
+
+enum TestUnitCountry
+{
+    case Greece;
 }

@@ -13,8 +13,11 @@ use Asignua\FilamentVatId\Registries\GusBir;
 use Asignua\FilamentVatId\Registries\Vies;
 use Asignua\FilamentVatId\Tests\Fixtures\Fixture;
 use Asignua\FilamentVatId\Tests\TestCase;
+use GuzzleHttp\Psr7\Response as Psr7Response;
 use Illuminate\Http\Client\Factory;
 use Illuminate\Http\Client\Request;
+use Illuminate\Http\Client\RequestException;
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 
 class RegistriesTest extends TestCase
@@ -230,6 +233,25 @@ class RegistriesTest extends TestCase
         Http::assertSent(fn (Request $r): bool => $r->url() === 'https://ares.gov.cz/ekonomicke-subjekty-v-be/rest/ekonomicke-subjekty/45274649');
     }
 
+    public function test_ares_does_not_confirm_a_dic_that_was_never_issued(): void
+    {
+        Http::fake(['ares.gov.cz/*' => Fixture::jsonResponse('ares/found_no_dic.json')]);
+
+        $this->assertNull(app(Ares::class)->lookup('CZ', TaxIdType::CzDic, 'CZ45274649'));
+        $this->assertNotNull(app(Ares::class)->lookup('CZ', TaxIdType::CzIco, '45274649'));
+    }
+
+    public function test_a_transport_error_with_a_response_is_registry_unavailable(): void
+    {
+        Http::fake(['ares.gov.cz/*' => fn () => throw new RequestException(
+            new Response(new Psr7Response(503)),
+        )]);
+
+        $this->expectException(RegistryUnavailable::class);
+
+        app(Ares::class)->lookup('CZ', TaxIdType::CzIco, '45274649');
+    }
+
     public function test_ares_accepts_a_dic_with_prefix_and_ignores_birth_number_dics(): void
     {
         Http::fake(['ares.gov.cz/*' => Fixture::jsonResponse('ares/found.json')]);
@@ -338,6 +360,21 @@ class RegistriesTest extends TestCase
         $search = $recorded[1][0];
         $this->assertSame(['fub7fg74ygrugu2ze56x'], $search->header('sid'));
         $this->assertStringContainsString('<dat:Nip>5260250995</dat:Nip>', $search->body());
+    }
+
+    public function test_gus_prefers_the_open_record_over_a_closed_one_listed_first(): void
+    {
+        $this->gusConfig();
+        Http::fake(['wyszukiwarkaregontest.stat.gov.pl/*' => Http::sequence()
+            ->push(Fixture::text('gus/login.txt'))
+            ->push(Fixture::text('gus/search_found_closed_first.txt')),
+        ]);
+
+        $company = app(GusBir::class)->lookup('PL', TaxIdType::PlNip, '5260250995');
+
+        $this->assertNotNull($company);
+        $this->assertTrue($company->active);
+        $this->assertSame('ul. Test-Krucza 160, 02-326 Warszawa', $company->address);
     }
 
     public function test_gus_reuses_the_session(): void

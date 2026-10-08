@@ -155,11 +155,7 @@ class TaxIdInput extends TextInput
             ? $this->evaluate($this->taxIdCountry, $get === null ? [] : ['get' => $get])
             : $this->taxIdCountry;
 
-        if (is_string($country) && trim($country) !== '') {
-            return strtoupper(trim($country));
-        }
-
-        return $this->getTaxIdType()->country();
+        return TaxIdValidator::countryCode($country) ?? $this->getTaxIdType()->country();
     }
 
     /**
@@ -269,6 +265,8 @@ class TaxIdInput extends TextInput
             ->tooltip(__('filament-vat-id::filament-vat-id.lookup.action'))
             ->icon(Heroicon::OutlinedMagnifyingGlass)
             ->visible(fn (): bool => (bool) $this->evaluate($this->hasLookup))
+            // An action does not inherit the field's disabled state: a locked field must not run lookups or overwrite siblings.
+            ->disabled(fn (): bool => $this->isDisabled() || $this->isReadOnly())
             ->action(function (Get $get, Set $set): void {
                 $this->runLookup($get, $set);
             });
@@ -276,6 +274,10 @@ class TaxIdInput extends TextInput
 
     protected function runLookup(Get $get, Set $set): void
     {
+        if ($this->isDisabled() || $this->isReadOnly()) {
+            return;
+        }
+
         $type = $this->getTaxIdType();
         $raw = $get($this->getName());
         $raw = is_string($raw) || is_int($raw) ? trim((string) $raw) : '';

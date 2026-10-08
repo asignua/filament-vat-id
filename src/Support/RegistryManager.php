@@ -178,6 +178,11 @@ class RegistryManager
      */
     public function verify(string $country, TaxIdType $type, string $number, ?string $only = null): Verification
     {
+        // A non-EU country on an EU VAT field: nothing to verify, whatever prefix the value carries.
+        if ($type === TaxIdType::EuVat && !TaxIdValidator::isEuCountry($country)) {
+            return new Verification(VerificationStatus::Skipped);
+        }
+
         $resolved = $this->resolve($country, $type, $number);
 
         if ($resolved === null || $this->verifyingRegistriesFor($resolved[0], $type, $only) === []) {
