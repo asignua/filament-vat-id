@@ -1,5 +1,7 @@
 # Filament VAT ID
 
+[![Stand With Ukraine](https://raw.githubusercontent.com/vshymanskyy/StandWithUkraine/main/badges/StandWithUkraine.svg)](https://stand-with-ukraine.pp.ua)
+
 <img class="filament-hidden" src="https://raw.githubusercontent.com/asignua/filament-vat-id/v1.0.2/art/cover.jpg" alt="Filament VAT ID">
 
 [![Tests](https://img.shields.io/github/actions/workflow/status/asignua/filament-vat-id/tests.yml?branch=main&label=tests)](https://github.com/asignua/filament-vat-id/actions/workflows/tests.yml)
