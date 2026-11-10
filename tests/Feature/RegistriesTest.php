@@ -76,7 +76,7 @@ class RegistriesTest extends TestCase
         Http::fake(['*' => Fixture::jsonResponse('vies/ms_unavailable.json')]);
 
         $this->expectException(RegistryUnavailable::class);
-        $this->expectExceptionMessage('MS_UNAVAILABLE');
+        $this->expectExceptionMessageContaining('MS_UNAVAILABLE');
 
         app(Vies::class)->lookup('DE', TaxIdType::EuVat, '136695976');
     }
@@ -177,7 +177,7 @@ class RegistriesTest extends TestCase
         Http::fake(['wl-api.mf.gov.pl/*' => Http::response(['code' => 'WL-190', 'message' => 'Przekroczono limit'], 429)]);
 
         $this->expectException(RegistryUnavailable::class);
-        $this->expectExceptionMessage('429');
+        $this->expectExceptionMessageContaining('429');
         app(BialaLista::class)->lookup('PL', TaxIdType::PlNip, '5260250995');
     }
 
@@ -436,7 +436,7 @@ class RegistriesTest extends TestCase
         \Illuminate\Support\Facades\Cache::flush();
 
         $this->expectException(RegistryUnavailable::class);
-        $this->expectExceptionMessage('ErrorCode 5');
+        $this->expectExceptionMessageContaining('ErrorCode 5');
         app(GusBir::class)->lookup('PL', TaxIdType::PlNip, '5260250995');
     }
 
@@ -479,7 +479,7 @@ class RegistriesTest extends TestCase
         Http::fake(['wyszukiwarkaregontest.stat.gov.pl/*' => Http::response(Fixture::text('gus/login_bad_key.txt'))]);
 
         $this->expectException(RegistryUnavailable::class);
-        $this->expectExceptionMessage('API key');
+        $this->expectExceptionMessageContaining('API key');
 
         app(GusBir::class)->lookup('PL', TaxIdType::PlNip, '5260250995');
     }
