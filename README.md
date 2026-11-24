@@ -1,10 +1,13 @@
 # Filament VAT ID
 
 [![Stand With Ukraine](https://raw.githubusercontent.com/vshymanskyy/StandWithUkraine/main/badges/StandWithUkraine.svg)](https://stand-with-ukraine.pp.ua)
+[![Latest Version on Packagist](https://img.shields.io/packagist/v/asignua/filament-vat-id.svg?style=flat-square)](https://packagist.org/packages/asignua/filament-vat-id)
+[![Tests](https://img.shields.io/github/actions/workflow/status/asignua/filament-vat-id/tests.yml?branch=main&label=tests&style=flat-square)](https://github.com/asignua/filament-vat-id/actions/workflows/tests.yml)
+[![Total Downloads](https://img.shields.io/packagist/dt/asignua/filament-vat-id.svg?style=flat-square)](https://packagist.org/packages/asignua/filament-vat-id)
+[![License](https://img.shields.io/packagist/l/asignua/filament-vat-id.svg?style=flat-square)](https://github.com/asignua/filament-vat-id/blob/main/LICENSE.md)
+[![Plumb score](https://plumbphp.dev/badges/asignua/filament-vat-id/composite.svg)](https://plumbphp.dev/asignua/filament-vat-id)
 
 <img class="filament-hidden" src="https://raw.githubusercontent.com/asignua/filament-vat-id/v1.0.3/art/cover.jpg" alt="Filament VAT ID">
-
-[![Tests](https://img.shields.io/github/actions/workflow/status/asignua/filament-vat-id/tests.yml?branch=main&label=tests)](https://github.com/asignua/filament-vat-id/actions/workflows/tests.yml)
 
 Validate and look up tax identifiers in Filament forms. Offline rules check the format and the checksum of EU VAT numbers
 (all 27 member states and Northern Ireland), Polish NIP and REGON, Czech IČO and DIČ and Ukrainian ЄДРПОУ and РНОКПП. An
@@ -295,6 +298,8 @@ See [CHANGELOG.md](CHANGELOG.md).
 - [Themes](https://filamentphp.com/plugins/asign-themes) — per-user and per-panel colour themes
 
 All plugins: <https://filamentphp.com/plugins?q=asign>
+
+Catalogue of free and commercial plugins: <https://asign.tech/en/plugins>
 
 ## License
 
